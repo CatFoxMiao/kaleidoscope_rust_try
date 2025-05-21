@@ -27,15 +27,7 @@ use std::{
     char,
     io::{self, Read},
 };
-// 获取当前字符
-// struct Lexer {
-//     source: Stdin,
-//     last_char: Option<char>,
-//     identifier_str: String,
-//     num_val: Option<f64>,
-//     // line:u32,
-//     // column:u32
-// }
+
 pub struct Lexer<R: Read> {
     source: R, // 使用泛型 R 替代固定的 Stdin
     last_char: CharState,
