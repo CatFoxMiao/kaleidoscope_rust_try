@@ -12,20 +12,21 @@ pub enum Token {
 pub enum CharState {
     NotInitailized,
     Char(char),
-    Eof
+    Eof,
 }
 
-
 impl CharState {
-    pub fn is_alphabetic(&self) -> bool{
+    pub fn is_alphabetic(&self) -> bool {
         match self {
             CharState::Char(c) => c.is_alphabetic(),
             _ => false,
         }
     }
-
 }
-use std::{char, io::{self, Read}};
+use std::{
+    char,
+    io::{self, Read},
+};
 // 获取当前字符
 // struct Lexer {
 //     source: Stdin,
@@ -152,9 +153,10 @@ impl<R: Read> Lexer<R> {
     //     Token::Char(this_char)
     // }
 
-    pub fn get_token(&mut self) -> Token{
+    pub fn get_token(&mut self) -> Token {
         // 跳过空格
-        while self.last_char == CharState::Char(' ')||self.last_char == CharState::NotInitailized {
+        while self.last_char == CharState::Char(' ') || self.last_char == CharState::NotInitailized
+        {
             self.get_char();
         }
 
@@ -163,13 +165,13 @@ impl<R: Read> Lexer<R> {
             CharState::Eof => return Token::Eof,
 
             // determin whether is identifier eof extern
-            CharState::Char(c) if c.is_alphabetic() =>{
+            CharState::Char(c) if c.is_alphabetic() => {
                 self.identifier_str.clear();
                 self.identifier_str.push(c);
                 loop {
                     self.get_char();
-                    match  self.last_char {
-                        CharState::Char(this_c)  if this_c.is_alphanumeric()=>{
+                    match self.last_char {
+                        CharState::Char(this_c) if this_c.is_alphanumeric() => {
                             self.identifier_str.push(this_c);
                         }
                         _ => break,
@@ -179,22 +181,24 @@ impl<R: Read> Lexer<R> {
                 match self.identifier_str.as_str() {
                     "def" => Token::Def,
                     "extern" => Token::Extern,
-                    _ => Token::Identifier
+                    _ => Token::Identifier,
                 }
             }
 
             CharState::Char(c) if c.is_numeric() || c == '.' => {
                 let mut number_str = String::new();
                 loop {
-                    if let CharState::Char(num_c) = self.last_char{
+                    if let CharState::Char(num_c) = self.last_char {
                         number_str.push(num_c);
                         self.get_char();
 
                         match self.last_char {
-                            CharState::Char(next_c) if next_c.is_numeric() || next_c == '.' => continue,
+                            CharState::Char(next_c) if next_c.is_numeric() || next_c == '.' => {
+                                continue;
+                            }
                             _ => break,
                         }
-                    }else {
+                    } else {
                         break;
                     }
                 }
@@ -202,15 +206,13 @@ impl<R: Read> Lexer<R> {
                 Token::Number
             }
 
-            CharState::Char(c) =>{
+            CharState::Char(c) => {
                 self.get_char();
                 Token::Char(c)
             }
             CharState::NotInitailized => unreachable!(),
         }
-
     }
-
 }
 
 #[cfg(test)]
@@ -251,7 +253,7 @@ mod test_lexer {
         lexer1.get_char();
         assert!(matches!(lexer1.last_char, CharState::Char('a')));
         lexer1.get_char();
-        assert!(matches!(lexer1.last_char,CharState::Char('b')));
+        assert!(matches!(lexer1.last_char, CharState::Char('b')));
         lexer1.get_char();
         assert!(matches!(lexer1.last_char, CharState::Char('c')));
         lexer1.get_char();
