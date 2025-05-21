@@ -274,6 +274,24 @@ mod test_lexer {
         let mut lexer2 = create_lexer("    ");
         assert!(matches!(lexer2.get_token(), Token::Eof));
     }
+
+    #[test]
+    fn test_def(){
+        let mut lexer1 = create_lexer("def");
+        assert!(matches!(lexer1.get_token(),Token::Def));
+        let mut lexer2 = create_lexer("   def  ");
+        assert!(matches!(lexer2.get_token(),Token::Def));
+        assert!(matches!(lexer1.get_token(),Token::Eof));
+    }
+
+    #[test]
+    fn test_extern(){
+        let mut lexer1 = create_lexer("extern");
+        assert!(matches!(lexer1.get_token(),Token::Extern));
+        let mut lexer2 = create_lexer("   extern  ");
+        assert!(matches!(lexer2.get_token(),Token::Extern));
+        assert!(matches!(lexer1.get_token(),Token::Eof));
+    }
     #[test]
     fn test_identifier() {
         let mut lexer1 = create_lexer("abc");
@@ -298,4 +316,13 @@ mod test_lexer {
     }
     // let mut lexer2 = create_lexer("12.3");
     // assert!(matches!(lexer2.get_token(),Token::Number));
+
+    #[test]
+    fn test_char(){
+        let mut lexer1 = create_lexer("a+b");
+        assert!(matches!(lexer1.get_token(),Token::Identifier));
+        assert!(matches!(lexer1.get_token(),Token::Char('+') ));
+        assert!(matches!(lexer1.get_token(),Token::Identifier ));
+
+    }
 }
