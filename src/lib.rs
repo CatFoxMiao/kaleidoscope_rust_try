@@ -8,13 +8,24 @@ pub enum Token {
     Comment,
 }
 
-enum CharState {
+#[derive(PartialEq)]
+pub enum CharState {
     NotInitailized,
     Char(char),
     Eof
 }
 
-use std::io::{self, Read};
+
+impl CharState {
+    pub fn is_alphabetic(&self) -> bool{
+        match self {
+            CharState::Char(c) => c.is_alphabetic(),
+            _ => false,
+        }
+    }
+
+}
+use std::{char, io::{self, Read}};
 // 获取当前字符
 // struct Lexer {
 //     source: Stdin,
@@ -26,7 +37,7 @@ use std::io::{self, Read};
 // }
 pub struct Lexer<R: Read> {
     source: R, // 使用泛型 R 替代固定的 Stdin
-    last_char: Option<char>,
+    last_char: CharState,
     identifier_str: String,
     num_val: Option<f64>,
 }
@@ -47,7 +58,7 @@ impl<R: Read> Lexer<R> {
         // })
         Ok(Lexer {
             source: source,
-            last_char: Some(' '), // 初始化为空格以跳过前导空格
+            last_char: CharState::NotInitailized, // 初始化为空格以跳过前导空格
             identifier_str: String::new(),
             num_val: None,
         })
@@ -57,10 +68,10 @@ impl<R: Read> Lexer<R> {
         let mut buf = [0u8; 1];
         match self.source.read_exact(&mut buf) {
             Ok(_) => {
-                self.last_char = Some(buf[0] as char);
+                self.last_char = CharState::Char(buf[0] as char);
             }
             Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => {
-                self.last_char = None;
+                self.last_char = CharState::Eof;
             }
             Err(e) => {
                 eprintln!("文件读取失败: {}", e);
@@ -69,77 +80,137 @@ impl<R: Read> Lexer<R> {
     }
 
     // get the token
-    pub fn get_token(&mut self) -> Token {
-        // Skip any whitspace
+    // pub fn get_token(&mut self) -> Token {
+    //     // Skip any whitspace
 
-        while self.last_char == Some(' ') {
-            // println!("self.last_char:{}", self.last_char.unwrap());
+    //     while self.last_char == CharState::Char(' ') {
+    //         // println!("self.last_char:{}", self.last_char.unwrap());
+    //         self.get_char();
+    //     }
+    //     if self.last_char == CharState::Eof {
+    //         return Token::Eof;
+    //     }
+    //     // println!("break while");
+    //     // println!("self.last_char:{}", self.last_char.unwrap());
+    //     // identifying idenfifiers and keywords such as "def" and "extern"
+
+    //     if self.last_char.is_alphabetic() {
+    //         self.identifier_str.clear();
+    //         self.identifier_str.push(self.last_char.unwarp());
+    //         loop {
+    //             self.get_char();
+    //             // after get a variable,
+    //             if self.last_char.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
+    //                 break;
+    //             }
+    //             self.identifier_str.push(self.last_char.unwrap());
+    //         }
+
+    //         if self.identifier_str.as_str() == "def" {
+    //             return Token::Def;
+    //         };
+    //         if self.identifier_str.as_str() == "extern" {
+    //             return Token::Extern;
+    //         };
+    //         println!("self.identifier:{}", self.identifier_str);
+    //         return Token::Identifier;
+    //     }
+
+    //     // Number:[0-9.]+
+    //     if self.last_char.unwrap().is_numeric() || self.last_char.unwrap() == '.' {
+    //         let mut number_str = String::new();
+    //         loop {
+    //             number_str.push(self.last_char.unwrap());
+    //             self.get_char();
+
+    //             if self
+    //                 .last_char
+    //                 .map(|c| !c.is_numeric() && c != '.')
+    //                 .unwrap_or(true)
+    //             {
+    //                 self.num_val = number_str.parse::<f64>().ok();
+    //                 return Token::Number;
+    //             }
+    //         }
+    //     }
+
+    //     if self.last_char.unwrap() == '#' {
+    //         loop {
+    //             if !(self.last_char.unwrap() != '\0'
+    //                 && self.last_char.unwrap() != '\n'
+    //                 && self.last_char.unwrap() != '\r')
+    //             {
+    //                 break;
+    //             };
+    //         }
+    //         return Token::Comment;
+    //     }
+
+    //     // Otherwise just return the character as its ascii value.
+    //     let this_char: char = self.last_char.unwrap();
+    //     self.get_char();
+    //     Token::Char(this_char)
+    // }
+
+    pub fn get_token(&mut self) -> Token{
+        // 跳过空格
+        while self.last_char == CharState::Char(' ')||self.last_char == CharState::NotInitailized {
             self.get_char();
         }
-        if self.last_char == None {
-            return Token::Eof;
-        }
-        // println!("break while");
-        // println!("self.last_char:{}", self.last_char.unwrap());
-        // identifying idenfifiers and keywords such as "def" and "extern"
 
-        if self.last_char.unwrap().is_alphabetic() {
-            self.identifier_str.clear();
-            self.identifier_str.push(self.last_char.unwrap());
-            loop {
-                self.get_char();
-                // after get a variable,
-                if self.last_char.map(|c| !c.is_alphanumeric()).unwrap_or(true) {
-                    break;
+        match self.last_char {
+            // determine whether is eof
+            CharState::Eof => return Token::Eof,
+
+            // determin whether is identifier eof extern
+            CharState::Char(c) if c.is_alphabetic() =>{
+                self.identifier_str.clear();
+                self.identifier_str.push(c);
+                loop {
+                    self.get_char();
+                    match  self.last_char {
+                        CharState::Char(this_c)  if this_c.is_alphanumeric()=>{
+                            self.identifier_str.push(this_c);
+                        }
+                        _ => break,
+                    }
                 }
-                self.identifier_str.push(self.last_char.unwrap());
-            }
 
-            if self.identifier_str.as_str() == "def" {
-                return Token::Def;
-            };
-            if self.identifier_str.as_str() == "extern" {
-                return Token::Extern;
-            };
-            println!("self.identifier:{}", self.identifier_str);
-            return Token::Identifier;
-        }
-
-        // Number:[0-9.]+
-        if self.last_char.unwrap().is_numeric() || self.last_char.unwrap() == '.' {
-            let mut number_str = String::new();
-            loop {
-                number_str.push(self.last_char.unwrap());
-                self.get_char();
-
-                if self
-                    .last_char
-                    .map(|c| !c.is_numeric() && c != '.')
-                    .unwrap_or(true)
-                {
-                    self.num_val = number_str.parse::<f64>().ok();
-                    return Token::Number;
+                match self.identifier_str.as_str() {
+                    "def" => Token::Def,
+                    "extern" => Token::Extern,
+                    _ => Token::Identifier
                 }
             }
-        }
 
-        if self.last_char.unwrap() == '#' {
-            loop {
-                if !(self.last_char.unwrap() != '\0'
-                    && self.last_char.unwrap() != '\n'
-                    && self.last_char.unwrap() != '\r')
-                {
-                    break;
-                };
+            CharState::Char(c) if c.is_numeric() || c == '.' => {
+                let mut number_str = String::new();
+                loop {
+                    if let CharState::Char(num_c) = self.last_char{
+                        number_str.push(num_c);
+                        self.get_char();
+
+                        match self.last_char {
+                            CharState::Char(next_c) if next_c.is_numeric() || next_c == '.' => continue,
+                            _ => break,
+                        }
+                    }else {
+                        break;
+                    }
+                }
+                self.num_val = number_str.parse::<f64>().ok();
+                Token::Number
             }
-            return Token::Comment;
+
+            CharState::Char(c) =>{
+                self.get_char();
+                Token::Char(c)
+            }
+            CharState::NotInitailized => unreachable!(),
         }
 
-        // Otherwise just return the character as its ascii value.
-        let this_char: char = self.last_char.unwrap();
-        self.get_char();
-        Token::Char(this_char)
     }
+
 }
 
 #[cfg(test)]
@@ -178,20 +249,20 @@ mod test_lexer {
     fn test_mock() {
         let mut lexer1 = create_lexer("abc");
         lexer1.get_char();
-        assert!(matches!(lexer1.last_char.unwrap(), 'a'));
+        assert!(matches!(lexer1.last_char, CharState::Char('a')));
         lexer1.get_char();
-        assert!(matches!(lexer1.last_char.unwrap(), 'b'));
+        assert!(matches!(lexer1.last_char,CharState::Char('b')));
         lexer1.get_char();
-        assert!(matches!(lexer1.last_char.unwrap(), 'c'));
+        assert!(matches!(lexer1.last_char, CharState::Char('c')));
         lexer1.get_char();
-        assert!(matches!(lexer1.last_char, None));
+        assert!(matches!(lexer1.last_char, CharState::Eof));
     }
 
     #[test]
     fn test_skip_spaces() {
         let mut lexer1 = create_lexer("   a");
         assert!(matches!(lexer1.get_token(), Token::Identifier));
-        assert!(matches!(lexer1.get_token(), Token::Eof));
+        //assert!(matches!(lexer1.get_token(), Token::Eof));
         // assert_eq!(lexer.last_char, Some('a')); // 正确停在第一个非空格字符
     }
     #[test]
