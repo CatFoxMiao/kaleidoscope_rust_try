@@ -1,4 +1,6 @@
+#[derive(Copy, Clone)]
 pub enum Token {
+    None,
     Eof,
     Def,
     Extern,
@@ -23,9 +25,9 @@ impl CharState {
         }
     }
 }
+
 use std::{
-    char,
-    io::{self, Read},
+    char, io::{self, Read}, ptr::read_unaligned, rc::Rc
 };
 
 pub struct Lexer<R: Read> {
@@ -33,27 +35,17 @@ pub struct Lexer<R: Read> {
     last_char: CharState,
     identifier_str: String,
     num_val: Option<f64>,
+    cur_tok:Token
 }
 
 impl<R: Read> Lexer<R> {
     pub fn new(source: R) -> io::Result<Self> {
-        // let mut buf = [0u8; 1];
-        // let last_char = match source.read_exact(&mut buf) {
-        //     Ok(_) => Some(buf[0] as char),                              // 成功读取
-        //     Err(e) if e.kind() == io::ErrorKind::UnexpectedEof => None, // EOF
-        //     Err(e) => return Err(e),                                    // 其他错误向上传递
-        // };
-        // Ok(Lexer {
-        //     source: source,
-        //     last_char: last_char,
-        //     identifier_str: String::new(),
-        //     num_val: None,
-        // })
         Ok(Lexer {
             source: source,
             last_char: CharState::NotInitailized, // 初始化为空格以跳过前导空格
             identifier_str: String::new(),
             num_val: None,
+            cur_tok:Token::None
         })
     }
 
@@ -132,6 +124,131 @@ impl<R: Read> Lexer<R> {
             CharState::NotInitailized => unreachable!(),
         }
     }
+
+    pub fn get_next_token(&mut self) -> Token{
+        self.cur_tok = self.get_token();
+        return  self.cur_tok;
+    }
+}
+
+use std::any::Any;
+use std::fmt::Debug;
+
+// Abstract Syntax Tree(aka Parse Tree)
+pub trait ExprAST: Any + Debug {
+    fn as_any(&self) -> &dyn Any;
+}
+
+// macro automatic implement ExprAST for Structs
+macro_rules! impl_expr_ast {
+    ($($struct_name:ident),*) => {
+        $(
+            impl ExprAST for $struct_name{
+                fn as_any(&self)-> &dyn Any{
+                    self
+                }
+            }
+        )*
+    };
+}
+
+// NumberExprAST - Expression struct for numeric literals like "1.0"
+#[derive(Debug)]
+pub struct NumberExprAST {
+    val: f64,
+}
+impl NumberExprAST {
+    pub fn new(val: f64) -> Self {
+        NumberExprAST { val: val }
+    }
+}
+#[derive(Debug)]
+pub struct VariableExprAST {
+    name: String,
+}
+impl VariableExprAST {
+    pub fn new(name: String) -> Self {
+        VariableExprAST { name: name }
+    }
+}
+
+#[derive(Debug)]
+pub struct BinaryExprAST {
+    op: char,
+    lhs: Rc<dyn ExprAST>,
+    rhs: Rc<dyn ExprAST>,
+}
+impl BinaryExprAST {
+    pub fn new(op: char, lhs: Rc<dyn ExprAST>, rhs: Rc<dyn ExprAST>) -> BinaryExprAST {
+        BinaryExprAST {
+            op: op,
+            lhs: lhs,
+            rhs: rhs,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct CallExprAST {
+    callee: String,
+    args: Vec<Rc<dyn ExprAST>>,
+}
+impl CallExprAST {
+    pub fn new(callee: String, args: Vec<Rc<dyn ExprAST>>) -> Self {
+        CallExprAST {
+            callee: callee,
+            args: args,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct PrototypeAST {
+    name: String,
+    args: Vec<String>,
+}
+impl PrototypeAST {
+    pub fn new(name: String, args: Vec<String>) -> PrototypeAST {
+        PrototypeAST {
+            name: name,
+            args: args,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct FunctionAST {
+    proto: Rc<PrototypeAST>,
+    body: Rc<dyn ExprAST>,
+}
+impl FunctionAST {
+    pub fn new(proto: Rc<PrototypeAST>, body: Rc<dyn ExprAST>) -> Self {
+        FunctionAST {
+            proto: proto,
+            body: body,
+        }
+    }
+}
+
+impl_expr_ast!(
+    NumberExprAST,
+    VariableExprAST,
+    BinaryExprAST,
+    CallExprAST,
+    PrototypeAST,
+    FunctionAST
+);
+
+#[cfg(test)]
+mod test_ast {
+    use super::*;
+
+    #[test]
+    fn test_one() {
+        let x: Rc<dyn ExprAST> = Rc::new(VariableExprAST::new("x".into()));
+        let y: Rc<dyn ExprAST> = Rc::new(VariableExprAST::new("y".into()));
+        let result = Rc::new(BinaryExprAST::new('+', x.clone(), y.clone()));
+        
+
+    
+    }
 }
 
 #[cfg(test)]
@@ -195,21 +312,21 @@ mod test_lexer {
     }
 
     #[test]
-    fn test_def(){
+    fn test_def() {
         let mut lexer1 = create_lexer("def");
-        assert!(matches!(lexer1.get_token(),Token::Def));
+        assert!(matches!(lexer1.get_token(), Token::Def));
         let mut lexer2 = create_lexer("   def  ");
-        assert!(matches!(lexer2.get_token(),Token::Def));
-        assert!(matches!(lexer1.get_token(),Token::Eof));
+        assert!(matches!(lexer2.get_token(), Token::Def));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
     }
 
     #[test]
-    fn test_extern(){
+    fn test_extern() {
         let mut lexer1 = create_lexer("extern");
-        assert!(matches!(lexer1.get_token(),Token::Extern));
+        assert!(matches!(lexer1.get_token(), Token::Extern));
         let mut lexer2 = create_lexer("   extern  ");
-        assert!(matches!(lexer2.get_token(),Token::Extern));
-        assert!(matches!(lexer1.get_token(),Token::Eof));
+        assert!(matches!(lexer2.get_token(), Token::Extern));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
     }
     #[test]
     fn test_identifier() {
@@ -237,11 +354,10 @@ mod test_lexer {
     // assert!(matches!(lexer2.get_token(),Token::Number));
 
     #[test]
-    fn test_char(){
+    fn test_char() {
         let mut lexer1 = create_lexer("a+b");
-        assert!(matches!(lexer1.get_token(),Token::Identifier));
-        assert!(matches!(lexer1.get_token(),Token::Char('+') ));
-        assert!(matches!(lexer1.get_token(),Token::Identifier ));
-
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
+        assert!(matches!(lexer1.get_token(), Token::Char('+')));
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
     }
 }
