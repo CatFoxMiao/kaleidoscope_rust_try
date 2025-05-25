@@ -1,4 +1,4 @@
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum Token {
     None,
     Eof,
@@ -26,8 +26,12 @@ impl CharState {
     }
 }
 
+use core::str;
 use std::{
-    char, io::{self, Read}, ptr::read_unaligned, rc::Rc
+    char,
+    fmt::write,
+    io::{self, Read, Stdout},
+    rc::Rc,
 };
 
 pub struct Lexer<R: Read> {
@@ -35,7 +39,7 @@ pub struct Lexer<R: Read> {
     last_char: CharState,
     identifier_str: String,
     num_val: Option<f64>,
-    cur_tok:Token
+    cur_tok: Token,
 }
 
 impl<R: Read> Lexer<R> {
@@ -45,7 +49,7 @@ impl<R: Read> Lexer<R> {
             last_char: CharState::NotInitailized, // 初始化为空格以跳过前导空格
             identifier_str: String::new(),
             num_val: None,
-            cur_tok:Token::None
+            cur_tok: Token::None,
         })
     }
 
@@ -125,9 +129,9 @@ impl<R: Read> Lexer<R> {
         }
     }
 
-    pub fn get_next_token(&mut self) -> Token{
+    pub fn get_next_token(&mut self) -> Token {
         self.cur_tok = self.get_token();
-        return  self.cur_tok;
+        return self.cur_tok;
     }
 }
 
@@ -236,19 +240,48 @@ impl_expr_ast!(
     FunctionAST
 );
 
+use std::error::Error;
+use std::fmt;
+use std::fmt::Display;
+
+#[derive(Debug)]
+pub enum ParseError {
+    LexerError(String),
+    SyntaxError(String),
+    UnexpectedToken(Token, &'static str),
+    GeneralError(String),
+}
+impl Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ParseError::LexerError(msg) => write!(f, "Lexer error:{}", msg),
+            ParseError::SyntaxError(msg) => write!(f, "Syntax error:{}", msg),
+            ParseError::UnexpectedToken(tok, expected) => {
+                write!(f, "unexpected token:{:?}, expected {}", tok, expected)
+            }
+            ParseError::GeneralError(msg) => write!(f, "error:{}", msg),
+        }
+    }
+}
+
+impl Error for ParseError {}
+
+pub fn syntax_error<T>(msg:&str) -> Result<T, ParseError>{
+    Err(ParseError::SyntaxError(msg.to_string()))
+}
+
+pub fn unexpected_token<T>(tok:Token, expected:&'static str)->Result<T,ParseError>{
+    Err(ParseError::UnexpectedToken(tok,expected))
+}
+
+
+pub struct ASTParser<R: Read> {
+    lexer: Lexer<R>,
+}
+
 #[cfg(test)]
 mod test_ast {
     use super::*;
-
-    #[test]
-    fn test_one() {
-        let x: Rc<dyn ExprAST> = Rc::new(VariableExprAST::new("x".into()));
-        let y: Rc<dyn ExprAST> = Rc::new(VariableExprAST::new("y".into()));
-        let result = Rc::new(BinaryExprAST::new('+', x.clone(), y.clone()));
-        
-
-    
-    }
 }
 
 #[cfg(test)]
