@@ -10,7 +10,7 @@ pub enum Token {
     Comment,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq,Debug,Clone, Copy)]
 pub enum CharState {
     NotInitailized,
     Char(char),
@@ -28,12 +28,9 @@ impl CharState {
 
 use core::str;
 use std::{
-    char,
-    fmt::write,
-    io::{self, Read, Stdout},
-    rc::Rc,
+    char,  io::{self, Read}, rc::Rc
 };
-
+#[derive(Debug,Clone)]
 pub struct Lexer<R: Read> {
     source: R, // 使用泛型 R 替代固定的 Stdin
     last_char: CharState,
@@ -129,7 +126,7 @@ impl<R: Read> Lexer<R> {
         }
     }
 
-    pub fn get_next_token(&mut self) -> Token {
+    pub fn update_token(&mut self) -> Token {
         self.cur_tok = self.get_token();
         return self.cur_tok;
     }
@@ -138,9 +135,21 @@ impl<R: Read> Lexer<R> {
 use std::any::Any;
 use std::fmt::Debug;
 
+pub enum ExprASTKind {
+    Number,
+    Variable,
+    Binary,
+    Call,
+    Prototype,
+    Function,
+    Error,
+    Empty,
+}
+
 // Abstract Syntax Tree(aka Parse Tree)
 pub trait ExprAST: Any + Debug {
     fn as_any(&self) -> &dyn Any;
+    fn kind(&self)-> ExprASTKind;
 }
 
 // macro automatic implement ExprAST for Structs
@@ -150,6 +159,19 @@ macro_rules! impl_expr_ast {
             impl ExprAST for $struct_name{
                 fn as_any(&self)-> &dyn Any{
                     self
+                }
+                fn kind(&self) -> ExprASTKind {
+                    match stringify!($struct_name) {
+                        "NumberExprAST" => ExprASTKind::Number,
+                        "VariableExprAST" => ExprASTKind::Variable,
+                        "BinaryExprAST" => ExprASTKind::Binary,
+                        "CallExprAST" => ExprASTKind::Call,
+                        "PrototypeAST" => ExprASTKind::Prototype,
+                        "FunctionAST" => ExprASTKind::Function,
+                        "ErrorAST" => ExprASTKind::Error,
+                        "EmptyExprAST" => ExprASTKind::Empty,
+                        _ => panic!("Unknown AST type"),
+                    }
                 }
             }
         )*
@@ -231,13 +253,32 @@ impl FunctionAST {
     }
 }
 
+// error-handling node
+#[derive(Debug)]
+pub struct ErrorAST {
+    error: ParseError,
+}
+impl ErrorAST {
+    pub fn new(error: ParseError) -> Self {
+        Self { error: error }
+    }
+    pub fn get_error(&self) -> &ParseError {
+        &self.error
+    }
+}
+
+// None node
+#[derive(Debug)]
+pub struct EmptyExprAST;
 impl_expr_ast!(
     NumberExprAST,
     VariableExprAST,
     BinaryExprAST,
     CallExprAST,
     PrototypeAST,
-    FunctionAST
+    FunctionAST,
+    ErrorAST,
+    EmptyExprAST
 );
 
 use std::error::Error;
@@ -263,21 +304,41 @@ impl Display for ParseError {
         }
     }
 }
-
 impl Error for ParseError {}
-
-pub fn syntax_error<T>(msg:&str) -> Result<T, ParseError>{
+pub fn syntax_error<T>(msg: &str) -> Result<T, ParseError> {
     Err(ParseError::SyntaxError(msg.to_string()))
 }
-
-pub fn unexpected_token<T>(tok:Token, expected:&'static str)->Result<T,ParseError>{
-    Err(ParseError::UnexpectedToken(tok,expected))
+pub fn unexpected_token<T>(tok: Token, expected: &'static str) -> Result<T, ParseError> {
+    Err(ParseError::UnexpectedToken(tok, expected))
 }
 
 
+#[derive(Debug)]
 pub struct ASTParser<R: Read> {
     lexer: Lexer<R>,
+    ast:Rc<dyn ExprAST>,
+    curtok:Token,
 }
+impl<R:Read> ASTParser<R>{
+    pub fn new(lexer:Lexer<R>) ->Self{
+        let temp_tok = lexer.cur_tok;
+        if lexer.last_char != CharState::NotInitailized{
+            panic!("lexer  has been used");
+        }
+        ASTParser { lexer:lexer, ast: Rc::new(EmptyExprAST),curtok:temp_tok}
+    }
+
+
+    // 已经调用lexer.update_token 迭代得到当前token为 number时调用
+    pub fn parse_number_expr(&mut self)-> Rc<dyn ExprAST>{
+        let num_val = self.lexer.num_val.unwrap();
+        self.lexer.update_token();
+        Rc::new(NumberExprAST::new(num_val))
+    }
+    
+
+}
+
 
 #[cfg(test)]
 mod test_ast {
