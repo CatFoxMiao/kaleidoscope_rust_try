@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug,PartialEq)]
 pub enum Token {
     None,
     Eof,
@@ -29,7 +29,6 @@ impl CharState {
 use core::str;
 use std::{
     char,
-    fmt::Error,
     io::{self, Read},
     rc::Rc,
 };
@@ -134,6 +133,119 @@ impl<R: Read> Lexer<R> {
         return self.cur_tok;
     }
 }
+
+#[cfg(test)]
+mod test_lexer {
+    use super::*;
+    // 替代stdin 模拟输入结构体
+    #[cfg(test)]
+    struct MockReader {
+        data: Vec<u8>,
+        position: usize,
+    }
+
+    #[cfg(test)]
+    impl Read for MockReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.position >= self.data.len() {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF"));
+            }
+            let len = buf.len().min(self.data.len() - self.position);
+            buf[..len].copy_from_slice(&self.data[self.position..self.position + len]);
+            self.position += len;
+            Ok(len)
+        }
+    }
+
+    #[cfg(test)]
+    fn create_lexer(input: &str) -> Lexer<MockReader> {
+        let source_mock_reader = MockReader {
+            data: input.as_bytes().to_vec(),
+            position: 0,
+        };
+
+        Lexer::new(source_mock_reader).unwrap()
+    }
+    #[test]
+    fn test_mock() {
+        let mut lexer1 = create_lexer("abc");
+        lexer1.get_char();
+        assert!(matches!(lexer1.last_char, CharState::Char('a')));
+        lexer1.get_char();
+        assert!(matches!(lexer1.last_char, CharState::Char('b')));
+        lexer1.get_char();
+        assert!(matches!(lexer1.last_char, CharState::Char('c')));
+        lexer1.get_char();
+        assert!(matches!(lexer1.last_char, CharState::Eof));
+    }
+
+    #[test]
+    fn test_skip_spaces() {
+        let mut lexer1 = create_lexer("   a");
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
+        //assert!(matches!(lexer1.get_token(), Token::Eof));
+        // assert_eq!(lexer.last_char, Some('a')); // 正确停在第一个非空格字符
+    }
+    #[test]
+    fn test_eof() {
+        let mut lexer1 = create_lexer("");
+        assert!(matches!(lexer1.get_token(), Token::Eof));
+        let mut lexer2 = create_lexer("    ");
+        assert!(matches!(lexer2.get_token(), Token::Eof));
+    }
+
+    #[test]
+    fn test_def() {
+        let mut lexer1 = create_lexer("def");
+        assert!(matches!(lexer1.get_token(), Token::Def));
+        let mut lexer2 = create_lexer("   def  ");
+        assert!(matches!(lexer2.get_token(), Token::Def));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
+    }
+
+    #[test]
+    fn test_extern() {
+        let mut lexer1 = create_lexer("extern");
+        assert!(matches!(lexer1.get_token(), Token::Extern));
+        let mut lexer2 = create_lexer("   extern  ");
+        assert!(matches!(lexer2.get_token(), Token::Extern));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
+    }
+    #[test]
+    fn test_identifier() {
+        let mut lexer1 = create_lexer("abc");
+        //assert!(matches!(lexer1.identifier_str.as_str(), "abc"));
+        //assert_eq!(lexer1.identifier_str.as_str(), "abc");
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
+    }
+
+    #[test]
+    fn test_number() {
+        let mut lexer1 = create_lexer("1.234");
+        assert!(matches!(lexer1.get_token(), Token::Number));
+        assert!(matches!(lexer1.num_val, Some::<f64>(1.234)));
+        assert!(matches!(lexer1.get_token(), Token::Eof));
+        let mut lexer2 = create_lexer(".234");
+        assert!(matches!(lexer2.get_token(), Token::Number));
+        assert!(matches!(lexer2.num_val, Some::<f64>(0.234)));
+        let mut lexer2 = create_lexer("       .234");
+        assert!(matches!(lexer2.get_token(), Token::Number));
+        assert!(matches!(lexer2.num_val, Some::<f64>(0.234)));
+    }
+    // let mut lexer2 = create_lexer("12.3");
+    // assert!(matches!(lexer2.get_token(),Token::Number));
+
+    #[test]
+    fn test_char() {
+        let mut lexer1 = create_lexer("a+b");
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
+        assert!(matches!(lexer1.get_token(), Token::Char('+')));
+        assert!(matches!(lexer1.get_token(), Token::Identifier));
+    }
+}
+
+
 
 use std::any::Any;
 use std::fmt::Debug;
@@ -321,7 +433,7 @@ pub struct ASTParser<R: Read> {
     curtok: Token,
 }
 impl<R: Read> ASTParser<R> {
-    pub fn new(mut lexer:Lexer<R>) -> Self {
+    pub fn new(lexer:Lexer<R>) -> Self {
         let temp_tok = lexer.cur_tok;
         if lexer.last_char != CharState::NotInitailized {
             panic!("lexer  has been used");
@@ -332,17 +444,50 @@ impl<R: Read> ASTParser<R> {
             curtok: temp_tok,
         }
     }
+    pub fn update_token(&mut self){
+        self.lexer.update_token();
+        self.curtok = self.lexer.cur_tok;
+    }
+    pub fn parse_expression() -> Rc<dyn ExprAST>{
+        todo!()
+    }
+    // 调用主函数
+    // 已经调用updae_lexer 迭代得到当前token为原子表达式的时候调用
+    pub fn parse_primary(&mut self) -> Rc<dyn ExprAST>{
+        match self.curtok {
+            Token::Number => self.parse_number_expr(),
+            _ => unreachable!()
+        }
 
+    }
+    
+    pub fn parse_identifierExpr(&mut self)->Rc<dyn ExprAST>{
+        let name = self.lexer.identifier_str.clone();
+        self.update_token();
+        match self.curtok{
+            Token::Char('(') => Rc::new(VariableExprAST::new(Name)),
+            _ => {
+                self.update_token();
+                let args: vec<Rc<dyn ExprAST>>;
+                if self.curtok != ')'  {
+                    while(1){
+                        
+                        let arg = self.parse_expression();
+                        if (self.curtok == ')') break;
+                        if (self.curtok != ',')
+
+                    }
+
+                }
+
+            }
+        }
+
+    }
     // 已经调用lexer.update_token 迭代得到当前token为 number时调用
     pub fn parse_number_expr(&mut self) -> Rc<dyn ExprAST> {
-        // let num_val = self.lexer.num_val.unwrap_or_else(||{
-        //    Rc::new( ErrorAST::new(ParseError::LexerError(String::from("Get a number token but the num_val has no number"))));
-        // });
-        // self.lexer.update_token();
-        // Rc::new(NumberExprAST::new(num_val))
         match self.lexer.num_val {
             Some(num_val) => {
-                self.lexer.update_token();
                 Rc::new(NumberExprAST::new(num_val))
             }
             None => Rc::new(ErrorAST::new(ParseError::LexerError(
@@ -382,7 +527,7 @@ mod test_ast {
 
         Lexer::new(source_mock_reader).unwrap()
     }
-    
+
     #[test]
     fn test_parse_number_expr(){
         let lexer1 = create_lexer("123");
@@ -391,116 +536,5 @@ mod test_ast {
         let ast1 = astparser1.parse_number_expr();
         let _ast2 = Rc::new(NumberExprAST::new(123.0));
         assert!(matches!(ast1,_ast2))
-    }
-}
-
-#[cfg(test)]
-mod test_lexer {
-    use super::*;
-    // 替代stdin 模拟输入结构体
-    #[cfg(test)]
-    struct MockReader {
-        data: Vec<u8>,
-        position: usize,
-    }
-
-    #[cfg(test)]
-    impl Read for MockReader {
-        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            if self.position >= self.data.len() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF"));
-            }
-            let len = buf.len().min(self.data.len() - self.position);
-            buf[..len].copy_from_slice(&self.data[self.position..self.position + len]);
-            self.position += len;
-            Ok(len)
-        }
-    }
-
-    #[cfg(test)]
-    fn create_lexer(input: &str) -> Lexer<MockReader> {
-        let source_mock_reader = MockReader {
-            data: input.as_bytes().to_vec(),
-            position: 0,
-        };
-
-        Lexer::new(source_mock_reader).unwrap()
-    }
-    #[test]
-    fn test_mock() {
-        let mut lexer1 = create_lexer("abc");
-        lexer1.get_char();
-        assert!(matches!(lexer1.last_char, CharState::Char('a')));
-        lexer1.get_char();
-        assert!(matches!(lexer1.last_char, CharState::Char('b')));
-        lexer1.get_char();
-        assert!(matches!(lexer1.last_char, CharState::Char('c')));
-        lexer1.get_char();
-        assert!(matches!(lexer1.last_char, CharState::Eof));
-    }
-
-    #[test]
-    fn test_skip_spaces() {
-        let mut lexer1 = create_lexer("   a");
-        assert!(matches!(lexer1.get_token(), Token::Identifier));
-        //assert!(matches!(lexer1.get_token(), Token::Eof));
-        // assert_eq!(lexer.last_char, Some('a')); // 正确停在第一个非空格字符
-    }
-    #[test]
-    fn test_eof() {
-        let mut lexer1 = create_lexer("");
-        assert!(matches!(lexer1.get_token(), Token::Eof));
-        let mut lexer2 = create_lexer("    ");
-        assert!(matches!(lexer2.get_token(), Token::Eof));
-    }
-
-    #[test]
-    fn test_def() {
-        let mut lexer1 = create_lexer("def");
-        assert!(matches!(lexer1.get_token(), Token::Def));
-        let mut lexer2 = create_lexer("   def  ");
-        assert!(matches!(lexer2.get_token(), Token::Def));
-        assert!(matches!(lexer1.get_token(), Token::Eof));
-    }
-
-    #[test]
-    fn test_extern() {
-        let mut lexer1 = create_lexer("extern");
-        assert!(matches!(lexer1.get_token(), Token::Extern));
-        let mut lexer2 = create_lexer("   extern  ");
-        assert!(matches!(lexer2.get_token(), Token::Extern));
-        assert!(matches!(lexer1.get_token(), Token::Eof));
-    }
-    #[test]
-    fn test_identifier() {
-        let mut lexer1 = create_lexer("abc");
-        //assert!(matches!(lexer1.identifier_str.as_str(), "abc"));
-        //assert_eq!(lexer1.identifier_str.as_str(), "abc");
-        assert!(matches!(lexer1.get_token(), Token::Identifier));
-        assert!(matches!(lexer1.get_token(), Token::Eof));
-    }
-
-    #[test]
-    fn test_number() {
-        let mut lexer1 = create_lexer("1.234");
-        assert!(matches!(lexer1.get_token(), Token::Number));
-        assert!(matches!(lexer1.num_val, Some::<f64>(1.234)));
-        assert!(matches!(lexer1.get_token(), Token::Eof));
-        let mut lexer2 = create_lexer(".234");
-        assert!(matches!(lexer2.get_token(), Token::Number));
-        assert!(matches!(lexer2.num_val, Some::<f64>(0.234)));
-        let mut lexer2 = create_lexer("       .234");
-        assert!(matches!(lexer2.get_token(), Token::Number));
-        assert!(matches!(lexer2.num_val, Some::<f64>(0.234)));
-    }
-    // let mut lexer2 = create_lexer("12.3");
-    // assert!(matches!(lexer2.get_token(),Token::Number));
-
-    #[test]
-    fn test_char() {
-        let mut lexer1 = create_lexer("a+b");
-        assert!(matches!(lexer1.get_token(), Token::Identifier));
-        assert!(matches!(lexer1.get_token(), Token::Char('+')));
-        assert!(matches!(lexer1.get_token(), Token::Identifier));
     }
 }
