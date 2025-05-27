@@ -10,7 +10,7 @@ pub enum Token {
     Comment,
 }
 
-#[derive(PartialEq,Debug,Clone, Copy)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum CharState {
     NotInitailized,
     Char(char),
@@ -28,9 +28,12 @@ impl CharState {
 
 use core::str;
 use std::{
-    char,  io::{self, Read}, rc::Rc
+    char,
+    fmt::Error,
+    io::{self, Read},
+    rc::Rc,
 };
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Lexer<R: Read> {
     source: R, // 使用泛型 R 替代固定的 Stdin
     last_char: CharState,
@@ -149,7 +152,7 @@ pub enum ExprASTKind {
 // Abstract Syntax Tree(aka Parse Tree)
 pub trait ExprAST: Any + Debug {
     fn as_any(&self) -> &dyn Any;
-    fn kind(&self)-> ExprASTKind;
+    fn kind(&self) -> ExprASTKind;
 }
 
 // macro automatic implement ExprAST for Structs
@@ -281,10 +284,9 @@ impl_expr_ast!(
     EmptyExprAST
 );
 
-use std::error::Error;
+use std::error::Error as StdError;
 use std::fmt;
 use std::fmt::Display;
-
 #[derive(Debug)]
 pub enum ParseError {
     LexerError(String),
@@ -304,7 +306,7 @@ impl Display for ParseError {
         }
     }
 }
-impl Error for ParseError {}
+impl StdError for ParseError {}
 pub fn syntax_error<T>(msg: &str) -> Result<T, ParseError> {
     Err(ParseError::SyntaxError(msg.to_string()))
 }
@@ -312,37 +314,84 @@ pub fn unexpected_token<T>(tok: Token, expected: &'static str) -> Result<T, Pars
     Err(ParseError::UnexpectedToken(tok, expected))
 }
 
-
 #[derive(Debug)]
 pub struct ASTParser<R: Read> {
     lexer: Lexer<R>,
-    ast:Rc<dyn ExprAST>,
-    curtok:Token,
+    ast: Rc<dyn ExprAST>,
+    curtok: Token,
 }
-impl<R:Read> ASTParser<R>{
-    pub fn new(lexer:Lexer<R>) ->Self{
+impl<R: Read> ASTParser<R> {
+    pub fn new(mut lexer:Lexer<R>) -> Self {
         let temp_tok = lexer.cur_tok;
-        if lexer.last_char != CharState::NotInitailized{
+        if lexer.last_char != CharState::NotInitailized {
             panic!("lexer  has been used");
         }
-        ASTParser { lexer:lexer, ast: Rc::new(EmptyExprAST),curtok:temp_tok}
+        ASTParser {
+            lexer: lexer,
+            ast: Rc::new(EmptyExprAST),
+            curtok: temp_tok,
+        }
     }
-
 
     // 已经调用lexer.update_token 迭代得到当前token为 number时调用
-    pub fn parse_number_expr(&mut self)-> Rc<dyn ExprAST>{
-        let num_val = self.lexer.num_val.unwrap();
-        self.lexer.update_token();
-        Rc::new(NumberExprAST::new(num_val))
+    pub fn parse_number_expr(&mut self) -> Rc<dyn ExprAST> {
+        // let num_val = self.lexer.num_val.unwrap_or_else(||{
+        //    Rc::new( ErrorAST::new(ParseError::LexerError(String::from("Get a number token but the num_val has no number"))));
+        // });
+        // self.lexer.update_token();
+        // Rc::new(NumberExprAST::new(num_val))
+        match self.lexer.num_val {
+            Some(num_val) => {
+                self.lexer.update_token();
+                Rc::new(NumberExprAST::new(num_val))
+            }
+            None => Rc::new(ErrorAST::new(ParseError::LexerError(
+                "Get a number token but the num_val has no number".to_string(),
+            ))),
+        }
     }
-    
-
 }
-
 
 #[cfg(test)]
 mod test_ast {
     use super::*;
+        #[cfg(test)]
+    struct MockReader {
+        data: Vec<u8>,
+        position: usize,
+    }
+
+    #[cfg(test)]
+    impl Read for MockReader {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if self.position >= self.data.len() {
+                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "EOF"));
+            }
+            let len = buf.len().min(self.data.len() - self.position);
+            buf[..len].copy_from_slice(&self.data[self.position..self.position + len]);
+            self.position += len;
+            Ok(len)
+        }
+    }
+    #[cfg(test)]
+    fn create_lexer(input: &str) -> Lexer<MockReader> {
+        let source_mock_reader = MockReader {
+            data: input.as_bytes().to_vec(),
+            position: 0,
+        };
+
+        Lexer::new(source_mock_reader).unwrap()
+    }
+    
+    #[test]
+    fn test_parse_number_expr(){
+        let lexer1 = create_lexer("123");
+        let mut astparser1 = ASTParser::new(lexer1);
+        astparser1.lexer.update_token();
+        let ast1 = astparser1.parse_number_expr();
+        let _ast2 = Rc::new(NumberExprAST::new(123.0));
+        assert!(matches!(ast1,_ast2))
+    }
 }
 
 #[cfg(test)]
